@@ -1,0 +1,7 @@
+.mcp_panel .pill{display:inline-block;padding:2px 6px;border-radius:10px;font-size:.8em;margin-left:6px}
+.mcp_panel .pill.on{background:#1b5e20;color:#e8f5e9}
+.mcp_panel .pill.off{background:#5e1b1b;color:#fdecea}
+.mcp_panel .srv{display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #333}
+.mcp_panel .srv .flex{flex:1}
+.mcp_panel .actions .menu_button{margin:0 2px}
+.mcp_panel .tools{font-size:.9em;opacity:.8}
