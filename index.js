@@ -1,7 +1,19 @@
-import { renderExtensionTemplateAsync, extension_settings } from '../../extensions.js';
-import { eventSource, event_types, getRequestHeaders, saveSettingsDebounced } from '../../../script.js';
-import { Popup, POPUP_TYPE } from '../../popup.js';
-import { ToolManager } from '../../tool-calling.js';
+// Path-independent access: rely on global objects exposed by SillyTavern runtime
+// so the extension can live under /data/default-user/extensions/... without adjusting relative paths.
+// Access through bracket notation to avoid type complaints in environments without declarations.
+const renderExtensionTemplateAsync = (window['renderExtensionTemplateAsync'] || window['render_extension_template_async'] || (() => Promise.resolve('')));
+const extension_settings = (window['extension_settings'] = window['extension_settings'] || {});
+const eventSource = window['eventSource'];
+const event_types = window['event_types'] || {};
+const getRequestHeaders = window['getRequestHeaders'] || (() => ({}));
+const saveSettingsDebounced = window['saveSettingsDebounced'] || (() => {});
+const Popup = window['Popup'];
+const POPUP_TYPE = window['POPUP_TYPE'] || {};
+const ToolManager = window['ToolManager'] || window['toolManager'];
+
+if (!eventSource || !ToolManager) {
+    console.warn('[MCP Servers Universal] Core globals missing. Extension may not function until SillyTavern finishes loading.');
+}
 
 const MODULE = 'mcp';
 
@@ -80,6 +92,12 @@ async function render() {
                     case 'reload-tools':
                         await api(`/servers/${encodeURIComponent(name)}/reload-tools`, { method: 'POST' });
                         break;
+                    case 'add-server':
+                        await addServerFlow();
+                        break;
+                    case 'import-servers':
+                        await importServersFlow();
+                        break;
                 }
                 await render();
                 await syncMcpTools();
@@ -150,6 +168,21 @@ async function render() {
         actions.appendChild(btn);
         actions.appendChild(reloadBtn);
     actions.appendChild(toolsBtn);
+    // Inline edit/delete
+    const inlineBtns = document.createElement('div');
+    inlineBtns.className = 'inline-buttons';
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'mini';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => editServerFlow(s));
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'mini';
+    delBtn.textContent = 'Del';
+    delBtn.addEventListener('click', () => deleteServerFlow(s));
+    inlineBtns.append(editBtn, delBtn);
+    actions.appendChild(inlineBtns);
         row.appendChild(label);
         row.appendChild(flex);
         row.appendChild(actions);
@@ -223,6 +256,209 @@ async function render() {
             }
         });
     }
+}
+
+async function addServerFlow() {
+    // Popup with textarea for raw JSON snippet or key:value form
+    const wrapper = document.createElement('div');
+    wrapper.className = 'column gap10px';
+    const help = document.createElement('div');
+    help.innerHTML = `<p>Paste either a single server JSON object (without outer "servers"), e.g.</p>
+<pre style="max-height:140px;overflow:auto;white-space:pre-wrap;">"OpenMemory": {\n  "type": "stdio",\n  "command": "npx",\n  "args": ["-y", "openmemory"],\n  "env": {\n    "OPENMEMORY_API_KEY": "YOUR_KEY",\n    "CLIENT_NAME": "openmemory"\n  }\n}</pre>
+<p>or just the object body (will prompt for name).</p>`;
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Server name (if not included)';
+    nameInput.style.width = '100%';
+    const ta = document.createElement('textarea');
+    ta.placeholder = 'Paste server config snippet here...';
+    ta.rows = 12;
+    ta.style.width = '100%';
+    const validateBtn = document.createElement('button');
+    validateBtn.type = 'button';
+    validateBtn.className = 'menu_button';
+    validateBtn.textContent = 'Validate';
+    const status = document.createElement('div');
+    status.style.fontSize = '.8em';
+    status.style.opacity = '.8';
+    wrapper.append(help, nameInput, ta, validateBtn, status);
+
+    let parsedName = null; let parsedConfig = null;
+    function tryParse() {
+        status.textContent = '';
+        parsedName = null; parsedConfig = null;
+        let text = ta.value.trim();
+        if (!text) { status.textContent = 'Empty.'; return; }
+        // If user pasted a quoted key prefix like "OpenMemory": { ... }
+        // Try to wrap into { "X": { ... } } and parse.
+        let candidate = text;
+        if (!candidate.startsWith('{')) {
+            // Possibly starts with "Name":
+            if (/^"?[A-Za-z0-9_-]+"?\s*:/.test(candidate)) {
+                candidate = '{' + candidate + '}';
+            }
+        }
+        try {
+            const obj = JSON.parse(candidate);
+            const keys = Object.keys(obj);
+            if (keys.length === 1 && typeof obj[keys[0]] === 'object' && obj[keys[0]] !== null) {
+                parsedName = keys[0];
+                parsedConfig = obj[keys[0]];
+            } else {
+                // Treat entire object as config body; require name field or outside name input
+                parsedConfig = obj;
+                parsedName = nameInput.value.trim() || obj.name || null;
+            }
+        } catch (e) {
+            // Try to parse as bare object body
+            try {
+                const obj2 = JSON.parse(text);
+                parsedConfig = obj2;
+                parsedName = nameInput.value.trim() || obj2.name || null;
+            } catch (e2) {
+                status.textContent = 'Parse error: ' + e2.message;
+                return;
+            }
+        }
+        if (!parsedName) {
+            status.textContent = 'Missing server name (provide in snippet or name field).';
+            return;
+        }
+        // Basic validation
+        if (!parsedConfig.type) parsedConfig.type = 'stdio';
+        if (parsedConfig.type === 'stdio' && !parsedConfig.command) {
+            status.textContent = 'For stdio servers, "command" is required.'; return;
+        }
+        if ((parsedConfig.type === 'http' || parsedConfig.type === 'sse') && !parsedConfig.url) {
+            status.textContent = `For ${parsedConfig.type} servers, "url" is required.`; return;
+        }
+        status.textContent = `Looks good. Will add server '${parsedName}'.`;
+    }
+    validateBtn.addEventListener('click', tryParse);
+
+    const popup = new Popup(wrapper, POPUP_TYPE.CONFIRM, 'Add MCP Server', { okButton: 'Add', cancelButton: 'Cancel' });
+    const result = await popup.show();
+    if (!result) return;
+    tryParse();
+    if (!parsedName || !parsedConfig) { toast('error', 'Cannot add: invalid or incomplete configuration.'); return; }
+    try {
+        await api('/servers', { method: 'POST', body: JSON.stringify({ name: parsedName, config: parsedConfig }) });
+        toast('success', `Server '${parsedName}' added.`);
+    } catch (e) {
+        toast('error', 'Failed to add: ' + e.message);
+    }
+}
+
+async function editServerFlow(server) {
+    try {
+        const existing = await api('/servers');
+        const current = existing.find(x => x.name === server.name);
+        if (!current) { toast('error', 'Server not found'); return; }
+        const cfg = structuredClone(current.config || {});
+        const wrapper = document.createElement('div');
+        const ta = document.createElement('textarea');
+        ta.rows = 14; ta.style.width = '100%';
+        ta.value = JSON.stringify(cfg, null, 2);
+        wrapper.innerHTML = `<p>Edit configuration for <b>${server.name}</b>. Invalid JSON will be rejected.</p>`;
+        wrapper.appendChild(ta);
+        const popup = new Popup(wrapper, POPUP_TYPE.CONFIRM, `Edit ${server.name}`, { okButton: 'Save', cancelButton: 'Cancel' });
+        const res = await popup.show();
+        if (!res) return;
+        try {
+            const parsed = JSON.parse(ta.value);
+            await api('/servers', { method: 'POST', body: JSON.stringify({ name: server.name, config: parsed }) });
+            toast('success', 'Updated.');
+        } catch (e) { toast('error', 'Save failed: ' + e.message); }
+    } catch (e) { toast('error', String(e)); }
+}
+
+async function deleteServerFlow(server) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = `<p>Delete MCP server <b>${server.name}</b>? Tools and cache entries will be removed.</p>`;
+    const popup = new Popup(wrapper, POPUP_TYPE.CONFIRM, 'Delete Server', { okButton: 'Delete', cancelButton: 'Cancel' });
+    const res = await popup.show();
+    if (!res) return;
+    try {
+        await api(`/servers/${encodeURIComponent(server.name)}`, { method: 'DELETE' });
+        toast('success', 'Deleted.');
+        await render();
+        await syncMcpTools();
+    } catch (e) { toast('error', 'Delete failed: ' + e.message); }
+}
+
+function parseMultiServerText(text) {
+    const results = [];
+    // Strategy: Attempt JSON parse directly; if it contains multiple keys treat each; else split by quoted key patterns
+    const trimmed = text.trim();
+    if (!trimmed) return results;
+    const tryPush = (name, cfg) => { if (name && cfg && typeof cfg === 'object') results.push({ name, config: cfg }); };
+    try {
+        const obj = JSON.parse(trimmed.startsWith('{') ? trimmed : '{' + trimmed + '}');
+        const keys = Object.keys(obj);
+        if (keys.length) {
+            if (keys.length === 1 && (obj[keys[0]]?.type || obj[keys[0]]?.command || obj[keys[0]]?.url)) {
+                tryPush(keys[0], obj[keys[0]]);
+            } else {
+                for (const k of keys) {
+                    if (obj[k] && typeof obj[k] === 'object') tryPush(k, obj[k]);
+                }
+            }
+        }
+        if (results.length) return results;
+    } catch { /* fallthrough */ }
+
+    // Fallback: regex to capture "Name": { ... } blocks (naive brace match limited depth)
+    const blockRegex = /"([A-Za-z0-9_\-]+)"\s*:\s*\{([^{}]|\{[^{}]*\})*\}/g; // simplistic
+    let m;
+    while ((m = blockRegex.exec(trimmed)) !== null) {
+        const full = m[0];
+        const name = m[1];
+        const idx = full.indexOf('{');
+        const body = full.slice(idx);
+        try {
+            const parsed = JSON.parse(body);
+            tryPush(name, parsed);
+        } catch { }
+    }
+    return results;
+}
+
+async function importServersFlow() {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = `<p>Paste one or more server definitions. Examples:</p>
+<pre style="max-height:120px;overflow:auto;white-space:pre-wrap;">"A": {"type":"stdio","command":"node","args":["a.js"]},\n"B": {"type":"http","url":"https://example.com/sse"}</pre>`;
+    const ta = document.createElement('textarea'); ta.rows = 14; ta.style.width = '100%';
+    const status = document.createElement('div'); status.style.fontSize = '.8em'; status.style.marginTop = '4px';
+    wrapper.append(ta, status);
+    const popup = new Popup(wrapper, POPUP_TYPE.CONFIRM, 'Import MCP Servers', { okButton: 'Import', cancelButton: 'Cancel' });
+    const res = await popup.show();
+    if (!res) return;
+    const entries = parseMultiServerText(ta.value);
+    if (!entries.length) { toast('error', 'No valid server blocks detected.'); return; }
+    let created = 0, updated = 0, failed = 0;
+    for (const { name, config } of entries) {
+        try {
+            // Basic validation
+            if (!config.type) config.type = config.url ? 'http' : 'stdio';
+            if (config.type === 'stdio' && !config.command) throw new Error('missing command');
+            if ((config.type === 'http' || config.type === 'sse') && !config.url) throw new Error('missing url');
+            // Attempt create; if 409 conflict, prompt once for overwrite
+            try {
+                await api('/servers', { method: 'POST', body: JSON.stringify({ name, config }) });
+                created++;
+            } catch (e) {
+                if (String(e).includes('already exists')) {
+                    // Overwrite silently (treat as update)
+                    await api(`/servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                    await api('/servers', { method: 'POST', body: JSON.stringify({ name, config }) });
+                    updated++;
+                } else throw e;
+            }
+        } catch (e) { failed++; console.warn('Import failed for', name, e); }
+    }
+    toast('success', `Import complete. Created: ${created}, Updated: ${updated}, Failed: ${failed}`);
+    await render();
+    await syncMcpTools();
 }
 
 // Maintain a set of currently registered MCP tool names to support clean unregister

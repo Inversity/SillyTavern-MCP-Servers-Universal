@@ -5,3 +5,6 @@
 .mcp_panel .srv .flex{flex:1}
 .mcp_panel .actions .menu_button{margin:0 2px}
 .mcp_panel .tools{font-size:.9em;opacity:.8}
+.mcp_panel .srv .inline-buttons{display:flex;gap:4px;margin-left:4px}
+.mcp_panel .srv .inline-buttons .mini{padding:2px 4px;font-size:.65rem;line-height:1;border:1px solid #444;background:#222;border-radius:3px;cursor:pointer}
+.mcp_panel .srv .inline-buttons .mini:hover{background:#2e2e2e}
