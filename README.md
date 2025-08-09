@@ -19,9 +19,9 @@ Manage and auto‑register Model Context Protocol (MCP) servers inside SillyTave
 ## Installation
 1. In SillyTavern open the **Extensions** panel.
 2. Use **Install from Git** and provide the repository URL:
-   ```
-   https://github.com/Inversity/SillyTavern-MCP-Servers-Universal
-   ```
+	 ```
+	 https://github.com/Inversity/SillyTavern-MCP-Servers-Universal
+	 ```
 3. Reload / restart SillyTavern if the panel does not appear automatically.
 4. Look for the drawer titled **MCP Servers Universal**.
 
@@ -40,18 +40,18 @@ You can paste any of the following into the **Add server** popup:
 ### 1. Named Key + Object
 ```json
 "OpenMemory": {
-  "type": "stdio",
-  "command": "npx",
-  "args": ["-y", "openmemory"],
-  "env": {"OPENMEMORY_API_KEY": "sk_your_key", "CLIENT_NAME": "openmemory"}
+	"type": "stdio",
+	"command": "npx",
+	"args": ["-y", "openmemory"],
+	"env": {"OPENMEMORY_API_KEY": "sk_your_key", "CLIENT_NAME": "openmemory"}
 }
 ```
 
 ### 2. Bare Object (provide name field or fill the name input)
 ```json
 {
-  "type": "http",
-  "url": "https://mcp.deepwiki.com/sse"
+	"type": "http",
+	"url": "https://mcp.deepwiki.com/sse"
 }
 ```
 Provide a name in the separate input if not embedded.
@@ -64,8 +64,8 @@ Provide a name in the separate input if not embedded.
 Or wrap them:
 ```json
 {
-  "playwright": {"type": "stdio", "command": "npx", "args": ["@playwright/mcp@latest"]},
-  "deepwiki": {"type": "http", "url": "https://mcp.deepwiki.com/sse"}
+	"playwright": {"type": "stdio", "command": "npx", "args": ["@playwright/mcp@latest"]},
+	"deepwiki": {"type": "http", "url": "https://mcp.deepwiki.com/sse"}
 }
 ```
 
