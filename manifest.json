@@ -1,11 +1,12 @@
 {
   "display_name": "MCP Servers Universal",
-  "loading_order": 2,
+  "loading_order": 100,
   "requires": [],
   "optional": [],
   "js": "index.js",
   "css": "style.css",
   "author": "Inversity",
   "version": "0.2.0",
-  "homePage": "https://github.com/Inversity/SillyTavern-MCP-Servers-Universal"
+  "homePage": "https://github.com/Inversity/SillyTavern-MCP-Servers-Universal",
+  "auto_update": true
 }
