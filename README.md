@@ -3,6 +3,10 @@
 Manage and auto‑register Model Context Protocol (MCP) servers inside SillyTavern. Start/stop servers, enable or disable their tools, and bulk import new server definitions directly from pasted JSON snippets.
 
 ---
+## ⚠️ WARNING
+**MCP servers can execute arbitrary commands and access your system resources. Using MCP servers without understanding what they do can be DANGEROUS. Always review server configurations before adding them. USE AT YOUR OWN RISK.**
+
+---
 ## Features
 - Server list with live status (Running / Stopped)
 - Start, Stop, Reload tools buttons per server
@@ -29,7 +33,7 @@ Manage and auto‑register Model Context Protocol (MCP) servers inside SillyTave
 ## Quick Start
 1. Open the **MCP Servers Universal** panel.
 2. Click **Add server** and paste a config snippet (examples below) then press **Add**.
-3. Ensure the server’s checkbox is ON (enabled). If not running, click **Start**.
+3. Ensure the server's checkbox is ON (enabled). If not running, click **Start**.
 4. Click the **Tools** button to enable/disable specific tools (Save to apply).
 5. Initiate a generation with a tool‑capable model (OpenAI/Claude/etc.) and function calling enabled; tools will appear under `/tools-list`.
 
@@ -81,7 +85,7 @@ Click **Del** → confirm. Tools from that server are unregistered automatically
 ---
 ## Tool Registration Details
 - Naming pattern: `mcp__<serverName>__<toolName>` (non‑alphanumerics replaced by `_`).
-- Parameters schema comes directly from the MCP tool’s advertised input schema (defaults to empty object if missing).
+- Parameters schema comes directly from the MCP tool's advertised input schema (defaults to empty object if missing).
 - Action: Calls `/api/plugins/mcp/servers/<name>/call-tool` which proxies to the MCP server.
 - Display name: `<Server>: <Tool>`.
 
